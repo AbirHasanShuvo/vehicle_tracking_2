@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:location/location.dart';
@@ -10,16 +12,18 @@ class MapPage extends StatefulWidget {
 }
 
 class _MapPageState extends State<MapPage> {
-  Location _locationController = new Location();
+  final Completer<GoogleMapController> _mapController =
+      Completer<GoogleMapController>();
+  final Location _locationController = Location();
   static const LatLng _pGooglePlex = LatLng(
-    23.778036640980943,
-    90.40585156395386,
+    37.422173551823825,
+    -122.08534174259061,
   );
   static const LatLng _pApplePark = LatLng(
-    23.822669356565928,
-    90.45480580828423,
+    37.42329807447437,
+    -122.08734122486044,
   );
-  LatLng? _currentP = null;
+  LatLng? _currentP;
 
   @override
   void initState() {
@@ -30,39 +34,61 @@ class _MapPageState extends State<MapPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: GoogleMap(
-        initialCameraPosition: CameraPosition(target: _pGooglePlex, zoom: 12.0),
-        markers: {
-          Marker(
-            markerId: const MarkerId('_currentLocation'),
-            position: _pGooglePlex,
-            infoWindow: const InfoWindow(title: 'Googleplex'),
-          ),
-          Marker(
-            markerId: const MarkerId('_sourceLocation'),
-            position: _pApplePark,
-            infoWindow: const InfoWindow(title: 'Apple Park'),
-          ),
-        },
-      ),
+      body:
+          _currentP == null
+              ? Center(child: CircularProgressIndicator())
+              : GoogleMap(
+                onMapCreated:
+                    ((GoogleMapController controller) =>
+                        _mapController.complete(controller)),
+                initialCameraPosition: CameraPosition(
+                  target: _pGooglePlex,
+                  zoom: 16.0,
+                ),
+                markers: {
+                  Marker(
+                    markerId: const MarkerId('_sourceLocation'),
+                    position: _pGooglePlex,
+                    infoWindow: const InfoWindow(title: 'Googleplex'),
+                  ),
+                  Marker(
+                    markerId: const MarkerId('_destinationLocation'),
+                    position: _pApplePark,
+                    infoWindow: const InfoWindow(title: 'Apple Park'),
+                  ),
+                  Marker(
+                    markerId: const MarkerId('_currentLocation'),
+                    position: _currentP!,
+                    infoWindow: const InfoWindow(title: 'My_location'),
+                  ),
+                },
+              ),
+    );
+  }
+
+  Future<void> _cameraToPosition(LatLng pos) async {
+    final GoogleMapController controller = await _mapController.future;
+    CameraPosition newCameraPosition = CameraPosition(target: pos, zoom: 16.0);
+    await controller.animateCamera(
+      CameraUpdate.newCameraPosition(newCameraPosition),
     );
   }
 
   Future<void> getLocationUpdates() async {
-    bool _serviceEnabled;
-    PermissionStatus _permissionGranted;
+    bool serviceEnabled;
+    PermissionStatus permissionGranted;
 
-    _serviceEnabled = await _locationController.serviceEnabled();
-    if (_serviceEnabled) {
-      _serviceEnabled = await _locationController.requestService();
+    serviceEnabled = await _locationController.serviceEnabled();
+    if (serviceEnabled) {
+      serviceEnabled = await _locationController.requestService();
     } else {
       return;
     }
 
-    _permissionGranted = await _locationController.hasPermission();
-    if (_permissionGranted == PermissionStatus.denied) {
-      _permissionGranted = await _locationController.requestPermission();
-      if (_permissionGranted != PermissionStatus.granted) {
+    permissionGranted = await _locationController.hasPermission();
+    if (permissionGranted == PermissionStatus.denied) {
+      permissionGranted = await _locationController.requestPermission();
+      if (permissionGranted != PermissionStatus.granted) {
         return;
       }
     }
@@ -76,7 +102,7 @@ class _MapPageState extends State<MapPage> {
             currentlocation.latitude!,
             currentlocation.longitude!,
           );
-          print(_currentP);
+          _cameraToPosition(_currentP!);
         });
       }
     });
