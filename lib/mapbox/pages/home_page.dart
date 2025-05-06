@@ -1,7 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:geolocator/geolocator.dart' as gl;
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mp;
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -11,40 +12,78 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  MapboxMap? mapboxMapController;
+  mp.MapboxMap? mapboxMapController;
+  StreamSubscription? userPositionStream;
+
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(body: MapWidget(onMapCreated: _onMapCreated));
+  void initState() {
+    super.initState();
+    // _setupPositionTracking();
   }
 
-  // void _onMapCreated(MapboxMap controller) {
-  //   setState(() {
-  //     mapboxMapController = controller;
-  //   });
+  @override
+  void dispose() {
+    userPositionStream?.cancel();
+    super.dispose();
+  }
 
-  //   mapboxMapController!.location.updateSettings(
-  //     LocationComponentSettings(enabled: true, pulsingEnabled: true),
-  //   );
-  // }
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(body: mp.MapWidget(onMapCreated: _onMapCreated));
+  }
 
-  void _onMapCreated(MapboxMap controller) async {
+  void _onMapCreated(mp.MapboxMap controller) {
     setState(() {
       mapboxMapController = controller;
     });
 
-    var status = await Permission.location.request();
-    if (status.isGranted) {
-      mapboxMapController!.location.updateSettings(
-        LocationComponentSettings(enabled: true, pulsingEnabled: true),
-      );
-    } else {
-      // You can handle denied permission here
-      debugPrint("Location permission not granted");
-    }
+    mapboxMapController!.location.updateSettings(
+      mp.LocationComponentSettings(enabled: true, pulsingEnabled: true),
+    );
   }
 
   Future<void> _setupPositionTracking() async {
     bool serviceEnabled;
-    LocationPermission permission;
+    gl.LocationPermission permission;
+    serviceEnabled = await gl.Geolocator.isLocationServiceEnabled();
+
+    if (!serviceEnabled) {
+      // Location services are not enabled, handle accordingly
+      return Future.error('Location services are disabled.');
+    }
+
+    permission = await gl.Geolocator.checkPermission();
+
+    if (permission == gl.LocationPermission.denied) {
+      permission = await gl.Geolocator.requestPermission();
+      if (permission == gl.LocationPermission.denied) {
+        return Future.error('Location permissions are denied');
+      }
+    }
+    if (permission == gl.LocationPermission.deniedForever) {
+      // Permissions are denied forever, handle accordingly
+      return Future.error(
+        'Location permissions are permanently denied, we cannot request permissions.',
+      );
+    }
+
+    gl.LocationSettings locationSettings = gl.LocationSettings(
+      accuracy: gl.LocationAccuracy.high,
+      distanceFilter: 100,
+    );
+
+    userPositionStream?.cancel();
+    userPositionStream = gl.Geolocator.getPositionStream(
+      locationSettings: locationSettings,
+    ).listen((gl.Position position) {
+      mapboxMapController?.setCamera(
+        mp.CameraOptions(
+          zoom: 15,
+          center: mp.Point(
+            coordinates: mp.Position(position.latitude, position.longitude),
+          ),
+        ),
+      );
+    });
   }
 }
